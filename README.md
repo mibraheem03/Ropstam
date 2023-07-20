@@ -30,13 +30,13 @@ Start the server: npm start
 Access the API via http://localhost:3000/api/
 ### API Endpoints
 #### Auth
-POST /api/signup/email: User sign-up with email and password.
+POST /api/user/signup/email: User sign-up with email and password.
 
-POST /api/signin/email: User sign-in with email and password.
+POST /api/user/signin/email: User sign-in with email and password.
 
-POST /api/signup/metamask: User sign-up with MetaMask authentication.
+POST /api/user/signup/metamask: User sign-up with MetaMask authentication.
 
-POST /api/signin/metamask: User sign-in with MetaMask authentication.
+POST /api/user/signin/metamask: User sign-in with MetaMask authentication.
 
 #### Car
 GET /api/car/cars: Get all car records.
