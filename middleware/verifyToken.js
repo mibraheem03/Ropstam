@@ -8,7 +8,7 @@ function verifyToken(req, res, next) {
     }
 
     // Verify the token
-    jwt.verify(token, "your-secret-key", (err, decoded) => {
+    jwt.verify(token, `${process.env.ACCESS_TOKEN}`, (err, decoded) => {
         if (err) {
             return res.status(401).json({ error: "Invalid token" });
         }
