@@ -3,13 +3,14 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "hardhat/console.sol";
 
 contract Ropstam is ERC20 {
     uint256 _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    constructor(uint256 supply) ERC20("ROPSTAM", "RST") {}
+    constructor() ERC20("ROPSTAM", "RST") {}
 
     function balanceOf(
         address account
@@ -51,7 +52,10 @@ contract Ropstam is ERC20 {
 
     function buy(uint256 amount) external payable {
         require(amount * 100 <= address(msg.sender).balance, "Not Enough Eth");
-        _mint(msg.sender, amount);
+        _totalSupply += amount;
+        unchecked {
+            _balances[msg.sender] += amount;
+        }
     }
 
     /**
@@ -84,11 +88,14 @@ contract Ropstam is ERC20 {
             fromBalance >= amount,
             "ERC20: transfer amount exceeds balance"
         );
+        uint256 burntAmount = calculateBurnAmount(amount);
+        uint256 amountoTransfer = amount - burntAmount;
+        _totalSupply -= burntAmount;
         unchecked {
             _balances[from] = fromBalance - amount;
             // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
             // decrementing then incrementing.
-            _balances[to] += amount;
+            _balances[to] += amountoTransfer;
         }
 
         emit Transfer(from, to, amount);
@@ -104,10 +111,7 @@ contract Ropstam is ERC20 {
         uint256 amount
     ) public virtual override returns (bool) {
         address owner = msg.sender;
-        uint256 burnAmount = calculateBurnAmount(amount);
-        uint256 transferAmount = amount - burnAmount;
-
-        _transfer(owner, to, transferAmount);
+        _transfer(owner, to, amount);
         return true;
     }
 

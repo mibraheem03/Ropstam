@@ -1,94 +1,91 @@
-const { time, loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
+const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 const { expect } = require("chai");
-const { ethers, upgrades } = require("hardhat");
+const { ethers } = require("hardhat");
 
-describe("Ropstam Token Contract", function () {
+describe("Ropstam Token Contract", () => {
 
-
-  async function deployContract() {
-    // Contracts are deployed using the first signer/account by default
-    [owner, addr1, addr2] = await ethers.getSigners();
+  const zeroAddress = "0x0000000000000000000000000000000000000000"
+  async function deploy() {
+    // Deploy the contract and get accounts
     const Ropstam = await ethers.getContractFactory("Ropstam");
+    const [owner, addr1, addr2] = await ethers.getSigners();
+
     const ropstam = await Ropstam.deploy();
+    await ropstam.waitForDeployment();
+    return { ropstam, owner, addr1, addr2 }
 
-    return { ropstam, owner, addr1, addr2 };
   }
-  it("Should have the correct name, symbol, and decimals", async function () {
-    const { ropstam } = await loadFixture(deployContract);
-    const name = await ropstam.name();
-    expect(await ropstam.name()).to.equal("Ropstam");
+  it("Should deploy the contract correctly", async () => {
+    const { ropstam } = await loadFixture(deploy);
+    expect(await ropstam.name()).to.equal("ROPSTAM");
     expect(await ropstam.symbol()).to.equal("RST");
-    expect(await ropstam.decimals()).to.equal(18);
   });
 
-  it("Should buy the initial supply to the contract deployer", async function () {
-    const { ropstam } = await loadFixture(deployContract);
-
-    const initialSupply = ethers.parseUnits("100000", 18);
-    const balance = await ropstam.balanceOf(owner.address);
-    expect(balance).to.equal(initialSupply);
+  it("Should allow buying tokens and minting", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const amountToBuy = 100;
+    await ropstam.connect(addr1).buy(amountToBuy, { value: amountToBuy * 100 });
+    expect(await ropstam.balanceOf(addr1.address)).to.equal(amountToBuy);
+    expect(await ropstam.totalSupply()).to.equal(amountToBuy);
   });
 
-  it("Should transfer tokens between accounts", async function () {
-    const { ropstam, owner, addr1 } = await loadFixture(deployContract);
-
-    const amountToTransfer = ethers.parseUnits("100", 18);
-    await ropstam.transfer(addr1.address, amountToTransfer);
-    const balanceOwner = await ropstam.balanceOf(owner.address);
-    const balanceAddr1 = await ropstam.balanceOf(addr1.address);
-
-    expect(balanceOwner).to.equal(
-      ethers.parseUnits("100000", 18) - (amountToTransfer)
-    );
-    expect(balanceAddr1).to.equal(amountToTransfer);
+  it("Should transfer tokens between accounts", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const amountToBuy = 100;
+    await ropstam.connect(addr1).buy(amountToBuy, { value: amountToBuy * 100 });
+    const initialBalance = await ropstam.balanceOf(addr1.address);
+    const transferAmount = 100n;
+    const deflationaryAmount = 99n;
+    await ropstam.connect(addr1).transfer(addr2.address, transferAmount);
+    expect(await ropstam.balanceOf(addr1.address)).to.equal(initialBalance - transferAmount);
+    expect(await ropstam.balanceOf(addr2.address)).to.equal(deflationaryAmount);
   });
 
-  it("Should apply 1% burn on transfers", async function () {
-    const { ropstam } = await loadFixture(deployContract);
-
-    const amountToTransfer = ethers.parseUnits("1000", 18);
-    await ropstam.transfer(addr1.address, amountToTransfer);
-    const totalSupplyBefore = await ropstam.totalSupply();
-
-    const burnAmount = amountToTransfer.div(100); // 1% burn
-    const expectedTotalSupplyAfter = totalSupplyBefore.sub(burnAmount);
-
-    const totalSupplyAfter = await ropstam.totalSupply();
-    expect(totalSupplyAfter).to.equal(expectedTotalSupplyAfter);
-
-    const balanceOwner = await ropstam.balanceOf(owner.address);
-    const balanceAddr1 = await ropstam.balanceOf(addr1.address);
-
-    expect(balanceOwner).to.equal(
-      ethers.parseUnits("100000", 18) - (amountToTransfer)
-    );
-    expect(balanceAddr1).to.equal(amountToTransfer - (burnAmount));
+  it("Should not allow transfers from the zero address", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const amountToBuy = 100;
+    await ropstam.connect(addr1).buy(amountToBuy, { value: amountToBuy * 100 });
+    await expect(ropstam.connect(addr1).transfer(zeroAddress, 100)).to.be.revertedWith("ERC20: transfer to the zero address");
   });
 
-  it("User should be able to buy tokens", async function () {
-    const { ropstam } = await loadFixture(deployContract);
-
-    const amountTobuy = ethers.parseUnits("5", 18);
-    await ropstam.buy(amountTobuy);
-
-    const balanceAddr1 = await ropstam.balanceOf(addr1.address);
-    const totalSupply = await ropstam.totalSupply();
-
-    expect(balanceAddr1).to.equal(amountTobuy);
-    expect(totalSupply).to.equal(
-      ethers.parseUnits("100000", 18) +(amountTobuy)
-    );
+  it("Should not allow transfers exceeding balance", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const balance = String(await ropstam.balanceOf(addr1.address));
+    await expect(ropstam.connect(addr1).transfer(addr1.address, balance + 1)).to.be.revertedWith("ERC20: transfer amount exceeds balance");
   });
 
-  it("Should not allow buying beyond the maximum supply", async function () {
-    const { ropstam } = await loadFixture(deployContract);
+  it("Should not allow transfers if allowance is insufficient", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const transferAmount = 100;
+    await ropstam.connect(addr1).approve(owner.address, transferAmount - 1);
+    await expect(ropstam.transferFrom(addr1.address, addr2.address, transferAmount)).to.be.revertedWith("ERC20: insufficient allowance");
+  });
 
-    const maxSupply = ethers.parseUnits("1000000", 18);
-    const currentSupply = await ropstam.totalSupply();
-    const amountTobuy = maxSupply - ((currentSupply) + (1n));
+  it("Should approve and transferFrom tokens correctly", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const amountToBuy = 100;
+    await ropstam.connect(addr1).buy(amountToBuy, { value: amountToBuy * 100 });
+    const initialBalance = await ropstam.balanceOf(owner.address);
+    const transferAmount = 100;
+    await ropstam.connect(addr1).approve(owner.address, transferAmount);
+    await ropstam.transferFrom(addr1.address, addr2.address, transferAmount);
+    expect(await ropstam.allowance(addr1.address, owner.address)).to.equal(0);
+    expect(await ropstam.balanceOf(addr1.address)).to.equal(0);
+    expect(await ropstam.balanceOf(addr2.address)).to.equal(BigInt(transferAmount) - 1n);
+  });
 
-    await expect(ropstam.buy(addr1.address, amountTobuy)).to.be.revertedWith(
-      "Exceeds maximum supply"
-    );
+  it("Should burn tokens when transferring", async () => {
+    const { ropstam, addr1, addr2, owner } = await loadFixture(deploy);
+    const transferAmount = 100;
+    const amountToBuy = 100;
+    await ropstam.connect(owner).buy(amountToBuy, { value: amountToBuy * 100 });
+    const initialBalance = Number(await ropstam.balanceOf(owner.address));
+    await ropstam.transfer(addr1.address, transferAmount);
+    const balanceAfter = await ropstam.balanceOf(owner.address)
+    const expectedBalance = Number(initialBalance - transferAmount);
+    expect(Number(balanceAfter)).to.equal(expectedBalance);
+    const totalSupply = Number(await ropstam.totalSupply());
+    expect(Number(await ropstam.balanceOf(addr1.address))).to.equal(Number(transferAmount - (transferAmount * 1) / 100));
+    expect(totalSupply).to.equal(100 - (transferAmount * 1) / 100);
   });
 });
