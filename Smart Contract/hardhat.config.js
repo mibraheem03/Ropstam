@@ -15,15 +15,15 @@ module.exports = {
         // blockNumber: 16867730,
       },
     },
-    goerli: {
+    bsc: {
       url: `${process.env.TESTNET}`,
       accounts: [process.env.PRIVATE_KEY],
-      chainId: 5,
+      chainId: 97,
     },
   },
   etherscan: {
     // Your API key for Etherscan
-    // Obtain one at https://etherscan.io/
+    // Obtain one at https://bscscan.com/
     apiKey: `${process.env.ETHERSCANAPI}`,
-  },
+  }
 };
